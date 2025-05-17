@@ -1,0 +1,96 @@
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <DHT.h>
+
+// Pin DHT11
+#define DHTPIN 15
+
+// Inisialisasi DHT11
+DHT dht(DHTPIN, DHT11);
+
+const char* ssid = "Realme";
+const char* password = "12345678";
+const char* mqtt_server = "192.168.208.139"; //local broker
+
+
+#define TOPIC "esp32/temp_hum" //MQTT Topic
+
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+
+void setup_wifi() {
+  delay(10);
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    String clientId = "ESP32Client-";
+    clientId += String(random(0xffff), HEX);
+    if (client.connect(clientId.c_str())) {
+      Serial.println("connected");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
+  }
+}
+
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+  setup_wifi();
+  client.setServer(mqtt_server, 1883);
+ // client.setCallback(callback);
+}
+
+void loop() {
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+  
+  // Read temperature and humidity from DHT11 sensor
+  float temp = dht.readTemperature();
+  float hum = dht.readHumidity();
+
+  if(isnan(temp) || isnan(hum)){
+    Serial.println("Failed Read Data From Sensor!!!");
+    return;
+  }
+
+  
+  Serial.print("Temperature: ");
+  Serial.println(temp);
+  Serial.print("Humidity: ");
+  Serial.println(hum);
+  Serial.println();
+
+  // Buat payload JSON
+  String payload = "{";
+  payload += "\"temperature\": " + String(temp, 1) + ",";
+  payload += "\"humidity\": " + String(hum, 1);
+  payload += "}";
+
+  // Publish temperature and humidity to MQTT broker
+  client.publish(TOPIC, payload.c_str());
+  
+  delay(1000); // Delay between sensor readings
+}
